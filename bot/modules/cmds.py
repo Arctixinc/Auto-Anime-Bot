@@ -92,58 +92,6 @@ async def _link(client, message):
         url_match = re.search(r'https?://\S+\.trycloudflare\.com', f.read())
         await message.reply_text(url_match.group() if url_match else "No tunnel URL found.")
         
-@bot.on_message(command('addtotask') & private & user(Var.ADMINS))
-@new_task
-async def add_to_task(client, message):    
-    anime_name_msg = await client.ask(message.chat.id, "Please provide the anime name:")
-    anime_name = anime_name_msg.text.strip()
-
-    if not anime_name:
-        return await sendMessage(message, "You must provide a valid anime name.")
-    
-    anime_link_msg = await client.ask(message.chat.id, "Please provide the magnet link:")
-    anime_link = anime_link_msg.text.strip()
-
-    if not anime_link:
-        return await sendMessage(message, "You must provide a valid magnet link.")
-
-    # Create the anime task with the provided name and link
-    ani_task = bot_loop.create_task(get_animes(anime_name, anime_link, True))
-
-    # Send a success message with the task details
-    await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name:</b> {anime_name}\n    • <b>Task Link:</b> {anime_link}")
-    
-
-@bot.on_message((document | video) & private & user(Var.ADMINS))
-@new_task
-async def dwe_file(client, message):
-    start_time = time.time()
-    try:
-        #m = await message.reply("File Received. Start Downloading.....")
-        m = await message.reply(
-            "<b>File Received. Start Downloading.....</b>",
-            reply_to_message_id=message.id
-        )
-        # Download the file
-        file_path = await client.download_media(
-            message,
-            progress=progress_for_pyrogram,
-            progress_args=("<b>Download Started....</b>", m, start_time)
-        )
-    except Exception as e:
-        return await message.reply(f"Failed to download the file: {str(e)}")
-
-    if not file_path:
-        return await message.reply("Failed to download the file. Please try again.")
-
-    # Extract the file name
-    file_name = (
-        message.document.file_name if message.document else message.video.file_name
-    )
-    encode_task = bot_loop.create_task(fencode(file_name, file_path, message, m))
-
-
-
 async def get_message_id(message):
     if message.forward_from_chat:
         return message.forward_from_message_id
