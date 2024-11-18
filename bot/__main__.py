@@ -1,18 +1,7 @@
-from asyncio import create_task, create_subprocess_exec, create_subprocess_shell, run as asyrun, all_tasks, gather, sleep as asleep
-from aiofiles import open as aiopen
-from pyrogram import idle
-from pyrogram.filters import command, user
-from os import path as ospath, execl, kill
-from sys import executable
-from signal import SIGKILL
+from asyncio import run as asyrun, sleep as asleep, all_tasks
+from bot import bot, bot_loop, LOGS, ffQueue, ffLock, ff_queued
+from bot.core.func_utils import clean_up
 
-#from bot import bot, Var, bot_loop, LOGS, ffQueue, ffLock, ffpids_cache, ff_queued, sch
-from bot import bot, Var, bot_loop, LOGS, ffQueue, ffLock, ffpids_cache, ff_queued
-#from bot.core.auto_animes import fetch_animes
-from bot.core.func_utils import clean_up, new_task, editMessage
-from bot.modules.up_posts import upcoming_animes
-
-            
 async def queue_loop():
     LOGS.info("Queue Loop Started !!")
     while True:
@@ -26,20 +15,16 @@ async def queue_loop():
         await asleep(10)
 
 async def main():
-    #sch.add_job(upcoming_animes, "cron", hour=0, minute=30)
     await bot.start()
-    await restart()
     LOGS.info('Auto Anime Bot Started!')
-    #sch.start()
     bot_loop.create_task(queue_loop())
-    #await fetch_animes()
-    await idle()
+    await bot.idle()
     LOGS.info('Auto Anime Bot Stopped!')
     await bot.stop()
-    for task in all_tasks:
+    for task in all_tasks():
         task.cancel()
     await clean_up()
     LOGS.info('Finished AutoCleanUp !!')
-    
+
 if __name__ == '__main__':
     bot_loop.run_until_complete(main())
