@@ -79,15 +79,6 @@ async def start_msg(client, message):
     else:
         await editMessage(temp, "<b>Input Link is Invalid for Usage !</b>")
     
-@bot.on_message(command('pause') & private & user(Var.ADMINS))
-async def pause_fetch(client, message):
-    ani_cache['fetch_animes'] = False
-    await sendMessage(message, "`Successfully Paused Fetching Animes...`")
-
-@bot.on_message(command('resume') & private & user(Var.ADMINS))
-async def pause_fetch(client, message):
-    ani_cache['fetch_animes'] = True
-    await sendMessage(message, "`Successfully Resumed Fetching Animes...`")
 
 @bot.on_message(command('log') & private & user(Var.ADMINS))
 @new_task
@@ -101,15 +92,6 @@ async def _link(client, message):
         url_match = re.search(r'https?://\S+\.trycloudflare\.com', f.read())
         await message.reply_text(url_match.group() if url_match else "No tunnel URL found.")
         
-@bot.on_message(command('addlink') & private & user(Var.ADMINS))
-@new_task
-async def add_task(client, message):
-    if len(args := message.text.split()) <= 1:
-        return await sendMessage(message, "<b>No Link Found to Add</b>")
-    
-    Var.RSS_ITEMS.append(args[0])
-    req_msg = await sendMessage(message, f"`Global Link Added Successfully!`\n\n    • **All Link(s) :** {', '.join(Var.RSS_ITEMS)[:-2]}")
-
 @bot.on_message(command('addtotask') & private & user(Var.ADMINS))
 @new_task
 async def add_to_task(client, message):    
@@ -160,19 +142,6 @@ async def dwe_file(client, message):
     )
     encode_task = bot_loop.create_task(fencode(file_name, file_path, message, m))
 
-
-@bot.on_message(command('addtask') & private & user(Var.ADMINS))
-@new_task
-async def add_task(client, message):
-    if len(args := message.text.split()) <= 1:
-        return await sendMessage(message, "<b>No Task Found to Add</b>")
-    
-    index = int(args[2]) if len(args) > 2 and args[2].isdigit() else 0
-    if not (taskInfo := await getfeed(args[1], index)):
-        return await sendMessage(message, "<b>No Task Found to Add for the Provided Link</b>")
-    
-    ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
-    await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}")
 
 
 async def get_message_id(message):
