@@ -4,8 +4,7 @@ from time import time
 from os import path as ospath
 from aiofiles import open as aiopen
 from aiofiles.os import remove as aioremove, rename as aiorename
-from shlex import split as ssplit
-from asyncio import sleep as asleep, gather, create_subprocess_shell, create_task
+from asyncio import sleep as asleep, create_subprocess_shell
 from asyncio.subprocess import PIPE
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
