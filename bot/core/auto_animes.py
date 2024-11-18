@@ -2,25 +2,16 @@ import os
 import time
 from moviepy.editor import VideoFileClip
 from PIL import Image
-from asyncio import gather, create_task, sleep as asleep, Event
-from asyncio.subprocess import PIPE
-from os import path as ospath, system
-from aiofiles import open as aiopen
+from asyncio import Event, sleep as asleep
+from os import path as ospath
 from aiofiles.os import remove as aioremove
-from traceback import format_exc
-from base64 import urlsafe_b64encode
-#from time import time
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 
-from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
-from .tordownload import TorDownloader
-from .database import db
-from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes
+from bot import bot, ffQueue, ffLock, ff_queued
+from .func_utils import editMessage, sendMessage, convertBytes
 from .text_utils import TextEditor
 from .ffencoder import FFEncoder
-from .tguploader import TgUploader
 from .utils import progress_for_pyrogram
-
 
 ff_encoders = {}
 file_path_cache = {}
