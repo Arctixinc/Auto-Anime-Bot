@@ -196,7 +196,7 @@ async def fencode(fname, fpath, message, m):
     await ffQueue.put(encodeid)
     await ffEvent.wait()
 
-    if encoder._canceled:
+    if encoder.is_cancelled:   # ✅ fixed
         ff_encoders.pop(encodeid, None)
         file_path_cache.pop(encodeid, None)
         await stat_msg.edit_text("<b>Encoding canceled while in queue.</b>")
@@ -222,7 +222,7 @@ async def fencode(fname, fpath, message, m):
     try:
         out_path = await encoder.start_encode()
     except Exception as e:
-        if encoder._canceled:
+        if encoder.is_cancelled:   # ✅ fixed
             await stat_msg.edit_text("<b>Encoding canceled.</b>")
         else:
             await stat_msg.delete()
