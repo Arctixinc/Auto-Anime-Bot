@@ -56,6 +56,14 @@ class FFEncoder:
     async def progress(self):
         if isinstance(self.__total_time, str):
             self.__total_time = 1.0
+
+        control_markup = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Pause", callback_data=f"pause_encoding:{self.__encodeid}"),
+            InlineKeyboardButton("Resume", callback_data=f"resume_encoding:{self.__encodeid}"),
+            InlineKeyboardButton("Cancel", callback_data=f"cancel_encoding:{self.__encodeid}")
+        ]
+        ])
         while not (self.__proc is None or self.is_cancelled):
             async with aiopen(self.__prog_file, 'r+') as p:
                 text = await p.read()
@@ -79,7 +87,8 @@ class FFEncoder:
     ‣ <b>Time Took :</b> {convertTime(diff)}
     ‣ <b>Time Left :</b> {convertTime(eta)}</blockquote>"""
 
-                await editMessage(self.message, progress_str)
+                # await editMessage(self.message, progress_str)
+                await editMessage(self.message, progress_str, reply_markup=control_markup)
 
                 if (prog := findall(r"progress=(\w+)", text)) and prog[-1] == 'end':
                     break
