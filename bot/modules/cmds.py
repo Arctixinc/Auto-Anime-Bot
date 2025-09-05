@@ -6,12 +6,15 @@ from asyncio import sleep as asleep, gather
 from pyrogram.filters import command, private, user, document, video
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, MessageNotModified
+from traceback import format_exc
+
 from bot import bot, bot_loop, Var, ani_cache
 from bot.core.database import db
 from bot.core.func_utils import decode, is_fsubbed, get_fsubs, editMessage, sendMessage, new_task, convertTime, getfeed
 from bot.core.auto_animes import fencode
 from bot.core.reporter import rep
 from bot.core.utils import progress_for_pyrogram
+
 
 @bot.on_message(command('start') & private)
 @new_task
@@ -20,9 +23,11 @@ async def start_msg(client, message):
     from_user = message.from_user
     txtargs = message.text.split()
     temp = await sendMessage(message, "<i>Connecting..</i>")
+    
     if not await is_fsubbed(uid):
         txt, btns = await get_fsubs(uid, txtargs)
         return await editMessage(temp, txt, InlineKeyboardMarkup(btns))
+    
     if len(txtargs) <= 1:
         await temp.delete()
         btns = []
@@ -35,25 +40,29 @@ async def start_msg(client, message):
                 btns[-1].insert(1, InlineKeyboardButton(bt, url=link))
             else:
                 btns.append([InlineKeyboardButton(bt, url=link)])
-        smsg = Var.START_MSG.format(first_name=from_user.first_name,
-                                    last_name=from_user.first_name,
-                                    mention=from_user.mention, 
-                                    user_id=from_user.id)
+        smsg = Var.START_MSG.format(
+            first_name=from_user.first_name,
+            last_name=from_user.first_name,
+            mention=from_user.mention,
+            user_id=from_user.id
+        )
         if Var.START_PHOTO:
             await message.reply_photo(
-                photo=Var.START_PHOTO, 
+                photo=Var.START_PHOTO,
                 caption=smsg,
                 reply_markup=InlineKeyboardMarkup(btns) if len(btns) != 0 else None
             )
         else:
             await sendMessage(message, smsg, InlineKeyboardMarkup(btns) if len(btns) != 0 else None)
         return
+
     try:
         arg = (await decode(txtargs[1])).split('-')
     except Exception as e:
         await rep.report(f"User : {uid} | Error : {str(e)}", "error")
         await editMessage(temp, "<b>Input Link Code Decode Failed !</b>")
         return
+
     if len(arg) == 2 and arg[0] == 'get':
         try:
             fid = int(int(arg[1]) / abs(int(Var.FILE_STORE)))
@@ -78,50 +87,53 @@ async def start_msg(client, message):
             await editMessage(temp, "<b>File Not Found !</b>")
     else:
         await editMessage(temp, "<b>Input Link is Invalid for Usage !</b>")
-    
+
+
 @bot.on_message(command('pause') & private & user(Var.ADMINS))
 async def pause_fetch(client, message):
     ani_cache['fetch_animes'] = False
     await sendMessage(message, "`Successfully Paused Fetching Animes...`")
 
+
 @bot.on_message(command('resume') & private & user(Var.ADMINS))
-async def pause_fetch(client, message):
+async def resume_fetch(client, message):
     ani_cache['fetch_animes'] = True
     await sendMessage(message, "`Successfully Resumed Fetching Animes...`")
+
 
 @bot.on_message(command('log') & private & user(Var.ADMINS))
 @new_task
 async def _log(client, message):
     await message.reply_document("log.txt", quote=True)
 
+
 @bot.on_message(command('link') & private & user(Var.ADMINS))
 @new_task
 async def _link(client, message):
-    with open("/root/cfd.log") as f:
-        url_match = re.search(r'https?://\S+\.trycloudflare\.com', f.read())
+    try:
+        with open("/root/cfd.log") as f:
+            url_match = re.search(r'https?://\S+\.trycloudflare\.com', f.read())
         await message.reply_text(url_match.group() if url_match else "No tunnel URL found.")
-        
+    except Exception as e:
+        await rep.report(f"Error reading link: {format_exc()}", "error")
+        await message.reply_text("Failed to retrieve link.")
+
+
 @bot.on_message(command('addlink') & private & user(Var.ADMINS))
 @new_task
 async def add_task(client, message):
     if len(args := message.text.split()) <= 1:
         return await sendMessage(message, "<b>No Link Found to Add</b>")
-    
     Var.RSS_ITEMS.append(args[0])
-    req_msg = await sendMessage(message, f"`Global Link Added Successfully!`\n\n    • **All Link(s) :** {', '.join(Var.RSS_ITEMS)[:-2]}")
-    
+    await sendMessage(message, f"`Global Link Added Successfully!`\n\n    • **All Link(s) :** {', '.join(Var.RSS_ITEMS)}")
+
 
 @bot.on_message((document | video) & private & user(Var.ADMINS))
 @new_task
 async def dwe_file(client, message):
     start_time = time.time()
     try:
-        #m = await message.reply("File Received. Start Downloading.....")
-        m = await message.reply(
-            "<b>File Received. Start Downloading.....</b>",
-            reply_to_message_id=message.id
-        )
-        # Download the file
+        m = await message.reply("<b>File Received. Start Downloading.....</b>", reply_to_message_id=message.id)
         file_path = await client.download_media(
             message,
             progress=progress_for_pyrogram,
@@ -133,27 +145,23 @@ async def dwe_file(client, message):
     if not file_path:
         return await message.reply("Failed to download the file. Please try again.")
 
-    # Extract the file name
-    file_name = (
-        message.document.file_name if message.document else message.video.file_name
-    )
-    encode_task = bot_loop.create_task(fencode(file_name, file_path, message, m))
-
+    file_name = message.document.file_name if message.document else message.video.file_name
+    bot_loop.create_task(fencode(file_name, file_path, message, m))
 
 
 async def get_message_id(message):
     if message.forward_from_chat:
         return message.forward_from_message_id
     elif message.forward_sender_name:
-        return 0
+        return None
     elif message.text:
         pattern = r"https://t.me/(?:c/)?(.*)/(\d+)"
         matches = re.match(pattern, message.text)
         if not matches:
-            return 0
+            return None
         return int(matches.group(2))
     else:
-        return 0
+        return None
 
 
 @bot.on_message(command("channel") & private & user(Var.ADMINS))
@@ -171,15 +179,13 @@ async def channel_task(client, message):
             except:
                 return
             f_msg_id = await get_message_id(first_message)
-            if f_msg_id:
+            if f_msg_id is not None:
                 break
-            else:
-                await first_message.reply(
-                    "<b>❌ Error\n\nThis forwarded post is not valid. Please forward a valid message from the channel.</b>",
-                    quote=True,
-                )
+            await first_message.reply(
+                "<b>❌ Error\n\nThis forwarded post is not valid. Please forward a valid message from the channel.</b>",
+                quote=True,
+            )
 
-        # Get the second message
         while True:
             try:
                 second_message = await client.ask(
@@ -191,15 +197,13 @@ async def channel_task(client, message):
             except:
                 return
             s_msg_id = await get_message_id(second_message)
-            if s_msg_id:
+            if s_msg_id is not None:
                 break
-            else:
-                await second_message.reply(
-                    "<b>❌ Error\n\nThis forwarded post is not valid. Please forward a valid message from the channel.</b>",
-                    quote=True,
-                )
+            await second_message.reply(
+                "<b>❌ Error\n\nThis forwarded post is not valid. Please forward a valid message from the channel.</b>",
+                quote=True,
+            )
 
-        # Ensure first_message_id < second_message_id
         start_msg_id = min(f_msg_id, s_msg_id)
         end_msg_id = max(f_msg_id, s_msg_id)
         chat_id = first_message.forward_from_chat.id
@@ -208,39 +212,29 @@ async def channel_task(client, message):
             f"<b>Processing messages from ID {start_msg_id} to {end_msg_id} in channel {chat_id}.</b>"
         )
 
-        # Track the start time of the entire download process
         total_start_time = time.time()
 
-        # Iterate through messages in the range
+        # Iterate messages
         for msg_id in range(start_msg_id, end_msg_id + 1):
             try:
                 msg = await client.get_messages(chat_id, msg_id)
                 if msg.video or (msg.document and msg.document.mime_type.startswith("video/")):
                     start_time = time.time()
-                    reply_message = await message.reply(
-                        f"<b>Downloading message {msg_id}...</b>"
-                    )
+                    reply_message = await message.reply(f"<b>Downloading message {msg_id}...</b>")
                     file_path = await client.download_media(
                         msg,
                         progress=progress_for_pyrogram,
                         progress_args=(f"<b>Downloading...</b>", reply_message, start_time),
                     )
                     if file_path:
-                        # Extract filename from message
-                        file_name = (
-                            msg.video.file_name if msg.video else msg.document.file_name
-                        )
-
-                        # Pass the downloaded file to video processing function
-                        encode_task = bot_loop.create_task(fencode(file_name, file_path, message, reply_message))
+                        file_name = msg.video.file_name if msg.video else msg.document.file_name
+                        bot_loop.create_task(fencode(file_name, file_path, message, reply_message))
                     else:
                         await reply_message.edit("Failed to download media.")
             except Exception as e:
-                await message.reply(f"Error processing message {msg_id}: {str(e)}")
+                await message.reply(f"Error processing message {msg_id}: {format_exc()}", "error")
 
-        # After all files have been processed
         total_time_taken = time.time() - total_start_time
-        # Send the final message with time taken
         await message.reply(
             f"<b>✅ All files have been downloaded successfully!\n\nTotal time taken: {convertTime(total_time_taken)}</b>"
         )
