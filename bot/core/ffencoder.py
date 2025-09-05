@@ -106,8 +106,8 @@ class FFEncoder:
 
             if text:
                 # parse progress fields safely
-                t_matches = findall("out_time_ms=(\d+)", text)
-                s_matches = findall(r"total_size=(\d+)", text)
+                t_matches = re.findall("out_time_ms=(\d+)", text)
+                s_matches = re.findall(r"total_size=(\d+)", text)
 
                 time_done = floor(int(t_matches[-1]) / 1000000) if t_matches else 1
                 ensize = int(s_matches[-1]) if s_matches else 0
@@ -137,7 +137,7 @@ class FFEncoder:
                     # ignore MessageNotModified and other transient errors
                     LOGS.debug(f"Ignored edit error for progress message: {e}")
 
-                if (prog := findall(r"progress=(\w+)", text)) and prog[-1] == 'end':
+                if (prog := re.findall(r"progress=(\w+)", text)) and prog[-1] == 'end':
                     break
 
             await asleep(6)
