@@ -36,10 +36,13 @@ async def get_video_info(video_path):
         LOGS.error(f"Error in get_video_info: {e}")
         return None
         
+import signal
+
 class FFEncoder:
     def __init__(self, message, path, name, encodeid, qual):
         self.__proc = None
         self.is_cancelled = False
+        self.is_paused = False
         self.message = message
         self.__name = name
         self.__qual = qual
@@ -51,8 +54,6 @@ class FFEncoder:
         self.__encodeid = encodeid
 
     async def progress(self):
-        #self.__total_time = await get_video_info(self.dl_path)
-        #LOGS.info(f"Video duration: {self.__total_time} seconds")
         if isinstance(self.__total_time, str):
             self.__total_time = 1.0
         while not (self.__proc is None or self.is_cancelled):
@@ -61,71 +62,97 @@ class FFEncoder:
             if text:
                 time_done = floor(int(t[-1]) / 1000000) if (t := findall("out_time_ms=(\d+)", text)) else 1
                 ensize = int(s[-1]) if (s := findall(r"total_size=(\d+)", text)) else 0
-                
+
                 diff = time() - self.__start_time
                 speed = ensize / diff
                 percent = round((time_done/self.__total_time)*100, 2)
                 tsize = ensize / (max(percent, 0.01)/100)
                 eta = (tsize-ensize)/max(speed, 0.01)
-    
+
                 bar = floor(percent/8)*"█" + (12 - floor(percent/8))*"▒"
-                
+
                 progress_str = f"""<blockquote>‣ <b>File Name :</b> <b><i>{self.__name}</i></b></blockquote>
-<blockquote>‣ <b>Status :</b> <i>Encoding</i>
+<blockquote>‣ <b>Status :</b> <i>{"Paused" if self.is_paused else "Encoding"}</i>
     <code>[{bar}]</code> {percent}%</blockquote> 
 <blockquote>   ‣ <b>Size :</b> {convertBytes(ensize)} out of ~ {convertBytes(tsize)}
     ‣ <b>Speed :</b> {convertBytes(speed)}/s
     ‣ <b>Time Took :</b> {convertTime(diff)}
     ‣ <b>Time Left :</b> {convertTime(eta)}</blockquote>"""
-                cancel_markup = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Cancel Encoding", callback_data=f"cancel_encoding:{self.__encodeid}")]
+
+                control_markup = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "⏸ Pause" if not self.is_paused else "▶️ Resume",
+                            callback_data=f"toggle_pause:{self.__encodeid}"
+                        ),
+                        InlineKeyboardButton(
+                            "❌ Cancel",
+                            callback_data=f"cancel_encoding:{self.__encodeid}"
+                        )
+                    ]
                 ])
-                await editMessage(self.message, progress_str)
-                #await editMessage(self.message, progress_str, buttons=cancel_markup)
+
+                await editMessage(self.message, progress_str, buttons=control_markup)
+
                 if (prog := findall(r"progress=(\w+)", text)) and prog[-1] == 'end':
                     break
             await asleep(8)
-    
+
     async def start_encode(self):
         if ospath.exists(self.__prog_file):
             await aioremove(self.__prog_file)
-    
+
         async with aiopen(self.__prog_file, 'w+'):
-            LOGS.info("Progress Temp Generated !")
             pass
-            
+
         self.__total_time = await get_video_info(self.dl_path)
         LOGS.info(f"Video duration: {self.__total_time} seconds")
-        
+
         dl_npath, out_npath = ospath.join("encode", "ffanimeadvin.mkv"), ospath.join("encode", "ffanimeadvout.mkv")
         await aiorename(self.dl_path, dl_npath)
-        
+
         ffcode = ffargs[self.__qual].format(dl_npath, self.__prog_file, out_npath)
-        
-        LOGS.info(f'FFCode: {ffcode}')
         self.__proc = await create_subprocess_shell(ffcode, stdout=PIPE, stderr=PIPE)
         proc_pid = self.__proc.pid
         ffpids_cache.append(proc_pid)
         LOGS.info(f"Started encoding process with PID: {proc_pid}")
+
         _, return_code = await gather(create_task(self.progress()), self.__proc.wait())
         ffpids_cache.remove(proc_pid)
-        
+
         await aiorename(dl_npath, self.dl_path)
-        
+
         if self.is_cancelled:
-            return
-        
+            if ospath.exists(out_npath):
+                await aioremove(out_npath)
+            return None
+
         if return_code == 0:
             if ospath.exists(out_npath):
                 await aiorename(out_npath, self.out_path)
             return self.out_path
         else:
             await rep.report((await self.__proc.stderr.read()).decode().strip(), "error")
-            
+            return None
+
     async def cancel_encode(self):
         self.is_cancelled = True
         if self.__proc is not None:
             try:
                 self.__proc.kill()
-            except:
-                pass
+                LOGS.info(f"Encoding cancelled for {self.__name}")
+            except Exception as e:
+                LOGS.error(f"Error cancelling process: {e}")
+
+    async def toggle_pause(self):
+        if self.__proc is None:
+            return
+        try:
+            if self.is_paused:
+                self.__proc.send_signal(signal.SIGCONT)  # Resume
+                self.is_paused = False
+            else:
+                self.__proc.send_signal(signal.SIGSTOP)  # Pause
+                self.is_paused = True
+        except Exception as e:
+            LOGS.error(f"Pause/Resume failed: {e}")
