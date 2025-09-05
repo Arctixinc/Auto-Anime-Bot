@@ -42,7 +42,7 @@ class FFEncoder:
     def __init__(self, message, path, name, encodeid, qual):
         self.__proc = None
         self.is_cancelled = False
-        self.is_paused = False
+        self.is_paused = False   # ✅ NEW
         self.message = message
         self.__name = name
         self.__qual = qual
@@ -64,35 +64,22 @@ class FFEncoder:
                 ensize = int(s[-1]) if (s := findall(r"total_size=(\d+)", text)) else 0
 
                 diff = time() - self.__start_time
-                speed = ensize / diff
-                percent = round((time_done/self.__total_time)*100, 2)
-                tsize = ensize / (max(percent, 0.01)/100)
-                eta = (tsize-ensize)/max(speed, 0.01)
+                speed = ensize / diff if diff > 0 else 0
+                percent = round((time_done / max(self.__total_time, 1)) * 100, 2)
+                tsize = ensize / (max(percent, 0.01) / 100)
+                eta = (tsize - ensize) / max(speed, 0.01)
 
-                bar = floor(percent/8)*"█" + (12 - floor(percent/8))*"▒"
+                bar = floor(percent / 8) * "█" + (12 - floor(percent / 8)) * "▒"
 
                 progress_str = f"""<blockquote>‣ <b>File Name :</b> <b><i>{self.__name}</i></b></blockquote>
-<blockquote>‣ <b>Status :</b> <i>{"Paused" if self.is_paused else "Encoding"}</i>
+<blockquote>‣ <b>Status :</b> <i>{'Paused' if self.is_paused else 'Encoding'}</i>
     <code>[{bar}]</code> {percent}%</blockquote> 
 <blockquote>   ‣ <b>Size :</b> {convertBytes(ensize)} out of ~ {convertBytes(tsize)}
     ‣ <b>Speed :</b> {convertBytes(speed)}/s
     ‣ <b>Time Took :</b> {convertTime(diff)}
     ‣ <b>Time Left :</b> {convertTime(eta)}</blockquote>"""
 
-                control_markup = InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            "⏸ Pause" if not self.is_paused else "▶️ Resume",
-                            callback_data=f"toggle_pause:{self.__encodeid}"
-                        ),
-                        InlineKeyboardButton(
-                            "❌ Cancel",
-                            callback_data=f"cancel_encoding:{self.__encodeid}"
-                        )
-                    ]
-                ])
-
-                await editMessage(self.message, progress_str, buttons=control_markup)
+                await editMessage(self.message, progress_str)
 
                 if (prog := findall(r"progress=(\w+)", text)) and prog[-1] == 'end':
                     break
@@ -103,7 +90,7 @@ class FFEncoder:
             await aioremove(self.__prog_file)
 
         async with aiopen(self.__prog_file, 'w+'):
-            pass
+            LOGS.info("Progress Temp Generated !")
 
         self.__total_time = await get_video_info(self.dl_path)
         LOGS.info(f"Video duration: {self.__total_time} seconds")
@@ -112,6 +99,8 @@ class FFEncoder:
         await aiorename(self.dl_path, dl_npath)
 
         ffcode = ffargs[self.__qual].format(dl_npath, self.__prog_file, out_npath)
+
+        LOGS.info(f'FFCode: {ffcode}')
         self.__proc = await create_subprocess_shell(ffcode, stdout=PIPE, stderr=PIPE)
         proc_pid = self.__proc.pid
         ffpids_cache.append(proc_pid)
@@ -123,9 +112,7 @@ class FFEncoder:
         await aiorename(dl_npath, self.dl_path)
 
         if self.is_cancelled:
-            if ospath.exists(out_npath):
-                await aioremove(out_npath)
-            return None
+            return
 
         if return_code == 0:
             if ospath.exists(out_npath):
@@ -133,26 +120,31 @@ class FFEncoder:
             return self.out_path
         else:
             await rep.report((await self.__proc.stderr.read()).decode().strip(), "error")
-            return None
 
     async def cancel_encode(self):
         self.is_cancelled = True
         if self.__proc is not None:
             try:
                 self.__proc.kill()
-                LOGS.info(f"Encoding cancelled for {self.__name}")
-            except Exception as e:
-                LOGS.error(f"Error cancelling process: {e}")
+            except:
+                pass
 
-    async def toggle_pause(self):
-        if self.__proc is None:
-            return
-        try:
-            if self.is_paused:
-                self.__proc.send_signal(signal.SIGCONT)  # Resume
-                self.is_paused = False
-            else:
-                self.__proc.send_signal(signal.SIGSTOP)  # Pause
+    async def pause_encode(self):
+        """Pause encoding by sending SIGSTOP"""
+        if self.__proc is not None and not self.is_paused:
+            try:
+                os.kill(self.__proc.pid, 19)  # SIGSTOP
                 self.is_paused = True
-        except Exception as e:
-            LOGS.error(f"Pause/Resume failed: {e}")
+            except Exception as e:
+                LOGS.error(f"Pause failed: {e}")
+                raise
+
+    async def resume_encode(self):
+        """Resume encoding by sending SIGCONT"""
+        if self.__proc is not None and self.is_paused:
+            try:
+                os.kill(self.__proc.pid, 18)  # SIGCONT
+                self.is_paused = False
+            except Exception as e:
+                LOGS.error(f"Resume failed: {e}")
+                raise
